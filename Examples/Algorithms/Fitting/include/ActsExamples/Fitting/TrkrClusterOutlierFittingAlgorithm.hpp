@@ -28,9 +28,8 @@
 #include "ActsExamples/EventData/TrkrClusterSourceLink.hpp"
 
 struct ResidualOutlierFinder {
-  long unsigned int tpcID;
-  double residualCut;
-  double chi2Cut;
+  std::vector<std::pair<long unsigned int, double>> chi2Cuts;
+  int verbosity = 0;
 
   template <typename track_state_t>
   bool operator()(const track_state_t& state) const {
@@ -39,26 +38,46 @@ struct ResidualOutlierFinder {
     if(not state.hasCalibrated() or not state.hasPredicted())
       return false;
 
-    auto residuals = state.calibrated() - state.projector() * state.predicted();
+    /// residuals between measurement and predicted state, local coord
+    // residuals = state.calibrated() - state.projector() * state.predicted();
+    auto distance = (state.calibrated() - state.projector() * state.predicted()).norm();
 
     /// Get the relevant state parameters
     const auto& projector = state.projector();
-
     const auto& predictedCov = state.predictedCovariance();
     const auto& stateCov = state.effectiveCalibratedCovariance();
+    
+    /// Calculate the chi2 between the prediction and measurement, similar to
+    /// Acts::MeasurementSelector.operator()
+    double chi2 = ((state.calibrated() - state.projector() * state.predicted()).transpose() * 
+		   (( stateCov + projector * predictedCov * projector.transpose())).inverse() * (state.calibrated() - state.projector() * state.predicted()))
+                   .eval()(0,0);
 
-    double chi2 = (residuals.transpose() *
-		   ((stateCov + projector * predictedCov * projector.transpose())).inverse() * residuals).eval()(0,0);
+    if(verbosity > 1)
+      {
+	std::cout << "geoid : " << state.referenceSurface().geometryId() << std::endl;
+	std::cout << "Distance between prediction and measurement is: " << distance << std::endl;
+	std::cout << "chi2 " << chi2  << std::endl;
+      }
 
-    std::cout << "Chi2 is " << chi2<<std::endl;
+    auto volID = state.referenceSurface().geometryId().volume();
 
-    auto distance = residuals.norm();
-    std::cout << "Distance is " << distance << std::endl;
+    for(auto& pair : chi2Cuts)
+      {
+	if(verbosity > 1)
+	  {
+	    std::cout << "VolID : " << volID << " checking against " << pair.first 
+		      << ",   chicut " << pair.second << " with chi2 " << chi2 << std::endl;
+	  }
 
-    //auto volID = state.referenceSurface().geometryId().volume();
-    //double distanceMax = std::numeric_limits<double>::max();
- 
-    return (chi2 <= chi2Cut);
+	if(volID == pair.first)
+	  {
+	    return chi2 <= pair.second;
+	  }
+      }
+    
+    /// If it's some other (unknown) detector default to keeping the measurement
+    return true;
   }
 };
 
