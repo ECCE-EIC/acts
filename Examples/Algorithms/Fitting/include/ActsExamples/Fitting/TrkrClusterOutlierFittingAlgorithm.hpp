@@ -53,7 +53,7 @@ struct ResidualOutlierFinder {
 		   (( stateCov + projector * predictedCov * projector.transpose())).inverse() * (state.calibrated() - state.projector() * state.predicted()))
                    .eval()(0,0);
 
-    if(verbosity > 1)
+    if(verbosity > 2)
       {
 	std::cout << "geoid : " << state.referenceSurface().geometryId() << std::endl;
 	std::cout << "Distance between prediction and measurement is: " << distance << std::endl;
@@ -64,7 +64,7 @@ struct ResidualOutlierFinder {
 
     for(auto& pair : chi2Cuts)
       {
-	if(verbosity > 1)
+	if(verbosity > 2)
 	  {
 	    std::cout << "VolID : " << volID << " checking against " << pair.first 
 		      << ",   chicut " << pair.second << " with chi2 " << chi2 << std::endl;
@@ -72,12 +72,12 @@ struct ResidualOutlierFinder {
 
 	if(volID == pair.first)
 	  {
-	    return chi2 <= pair.second;
+	    return chi2 >= pair.second;
 	  }
       }
     
     /// If it's some other (unknown) detector default to keeping the measurement
-    return true;
+    return false;
   }
 };
 
